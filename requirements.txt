@@ -1,0 +1,7 @@
+mcp>=2.3,<3
+pydantic>=2
+fastapi
+uvicorn
+boto3
+pytest
+tzdata; sys_platform == "win32"

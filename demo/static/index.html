@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GridShift · Alexa+ simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --panel-2: #18202b; --line: #243040;
+    --text: #e8eef5; --muted: #8a99ab; --accent: #3fd3ff; --accent-2: #7cf0c4;
+    --cheap: #3ddc97; --avg: #c9b458; --pricey: #ff6b5e; --band: rgba(63, 211, 255, .16);
+    --radius: 22px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(1200px 600px at 20% -10%, #14324a 0%, transparent 60%), var(--bg);
+         color: var(--text); font: 15px/1.5 Manrope, system-ui, sans-serif; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 14px; padding: 18px 28px; }
+  .logo { font-weight: 800; font-size: 22px; letter-spacing: -.02em; }
+  .logo b { color: var(--accent-2); }
+  .tag { color: var(--muted); font-size: 13px; }
+  .pill { margin-left: auto; font-size: 12px; color: var(--muted); border: 1px solid var(--line); padding: 6px 12px; border-radius: 99px; }
+  .pill i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
+  .pill.ok i { background: var(--cheap); box-shadow: 0 0 10px var(--cheap); }
+  main { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 24px; padding: 4px 28px 28px; }
+  main > * { min-width: 0; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 4px 16px 16px; } header { padding: 16px; } .tag { display: none; } .device { padding: 10px; } .screen { padding: 20px 18px 28px; } }
+
+  /* Device */
+  .device { background: #05080b; border-radius: 34px; padding: 18px; border: 1px solid #1c2633;
+            box-shadow: 0 30px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.04); }
+  .screen { position: relative; background: linear-gradient(180deg, #101a26, #0b121b); border-radius: var(--radius);
+            padding: 26px 26px 34px; min-height: 420px; overflow: hidden; display: flex; flex-direction: column; gap: 18px; }
+  .clock { color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; }
+  .reply { font-size: clamp(20px, 2.4vw, 27px); font-weight: 600; line-height: 1.3; letter-spacing: -.01em; min-height: 3.9em; }
+  .reply.dim { color: var(--muted); font-weight: 500; }
+  .heard { color: var(--muted); font-size: 14px; min-height: 1.5em; }
+  .heard::before { content: "“"; } .heard::after { content: "”"; } .heard:empty::before, .heard:empty::after { content: ""; }
+  svg#chart { width: 100%; height: 170px; display: block; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; background: var(--c); vertical-align: -1px; }
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: transparent; transition: background .3s; }
+  [data-state="listening"] .bar { background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: sweep 1.2s ease-in-out infinite; background-size: 50% 100%; background-repeat: no-repeat; }
+  [data-state="thinking"] .bar { background: linear-gradient(90deg, #1b6cff, var(--accent), #1b6cff); animation: pulse 1s ease-in-out infinite; }
+  [data-state="speaking"] .bar { background: linear-gradient(90deg, var(--accent), var(--accent-2)); animation: pulse .5s ease-in-out infinite; }
+  @keyframes sweep { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+  @keyframes pulse { 50% { opacity: .45; } }
+
+  .controls { display: flex; gap: 12px; align-items: center; margin-top: 18px; }
+  .mic { flex: none; width: 58px; height: 58px; border-radius: 50%; border: 0; cursor: pointer; background: var(--accent); color: #002230;
+         display: grid; place-items: center; box-shadow: 0 0 0 0 rgba(63,211,255,.6); }
+  [data-state="listening"] .mic { animation: ring 1.2s infinite; }
+  @keyframes ring { 70% { box-shadow: 0 0 0 16px rgba(63,211,255,0); } }
+  .mic svg { width: 24px; height: 24px; }
+  form { flex: 1; display: flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 99px; overflow: hidden; }
+  input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text); font: inherit; padding: 0 18px; height: 50px; outline: none; }
+  form button { background: transparent; border: 0; color: var(--accent); font: 600 14px Manrope, system-ui, sans-serif; padding: 0 18px; cursor: pointer; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip { background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 99px; padding: 8px 14px; font: 500 13px Manrope, system-ui, sans-serif; cursor: pointer; }
+  .chip:hover { border-color: var(--accent); }
+  .opts { margin-top: 12px; font-size: 13px; color: var(--muted); }
+
+  /* Under the hood */
+  .hood { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; min-height: 300px; }
+  .hood h2 { margin: 0 0 4px; font-size: 15px; }
+  .hood p.sub { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+  .call { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; background: var(--panel-2); animation: in .3s ease; }
+  @keyframes in { from { opacity: 0; transform: translateY(6px); } }
+  .call .name { font: 500 13px "JetBrains Mono", monospace; color: var(--accent-2); }
+  .call .args { font: 12px "JetBrains Mono", monospace; color: var(--muted); margin: 4px 0 8px; word-break: break-word; }
+  .call .say { font-size: 14px; }
+  details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  pre { font: 11.5px/1.45 "JetBrains Mono", monospace; color: #b9c7d6; background: #0b1118; border-radius: 10px; padding: 10px; overflow: auto; max-height: 260px; }
+  .empty { color: var(--muted); font-size: 13px; border: 1px dashed var(--line); border-radius: 14px; padding: 18px; }
+  .err { color: var(--pricey); }
+</style>
+</head>
+<body data-state="idle">
+<header>
+  <div class="logo">Grid<b>Shift</b></div>
+  <div class="tag">for Alexa+ · voice simulator</div>
+  <div class="pill" id="status"><i></i><span>connecting to MCP…</span></div>
+</header>
+
+<main>
+  <section>
+    <div class="device">
+      <div class="screen">
+        <div class="clock"><span id="clock"></span><span id="source"></span></div>
+        <div class="heard" id="heard"></div>
+        <div class="reply dim" id="reply">Try “Alexa, when should I run the dishwasher?”</div>
+        <svg id="chart" role="img" aria-label="Hourly electricity prices for the next 24 hours"></svg>
+        <div class="legend">
+          <span style="--c: var(--cheap)">cheap</span><span style="--c: var(--avg)">average</span>
+          <span style="--c: var(--pricey)">expensive</span><span style="--c: var(--accent)">planned run</span>
+        </div>
+        <div class="bar"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="mic" id="mic" title="Hold a conversation (Chrome)" aria-label="Speak">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2Z"/></svg>
+      </button>
+      <form id="form"><input id="input" placeholder="Ask about electricity or your appliances…" autocomplete="off"><button>Send</button></form>
+    </div>
+    <div class="chips">
+      <button class="chip">When should I run the dishwasher?</button>
+      <button class="chip">Charge my car tonight, I leave at 7 am</button>
+      <button class="chip">Plan my laundry and the car for tonight</button>
+      <button class="chip">Is electricity expensive right now?</button>
+    </div>
+    <label class="opts"><input type="checkbox" id="voice" checked style="width:auto;height:auto;vertical-align:-2px"> Speak replies</label>
+  </section>
+
+  <aside class="hood">
+    <h2>Under the hood</h2>
+    <p class="sub">Every tool call the assistant makes to the GridShift MCP server (Streamable HTTP), with its structured result.</p>
+    <div id="calls"><div class="empty">No tool calls yet.</div></div>
+  </aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const setState = (s) => (document.body.dataset.state = s);
+let history = [], outlook = null, bands = [];
+
+function tick() { $("clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+setInterval(tick, 10000); tick();
+
+async function loadOutlook() {
+  try {
+    const r = await fetch("/api/outlook");
+    if (!r.ok) throw new Error(await r.text());
+    outlook = await r.json();
+    $("status").className = "pill ok";
+    $("status").querySelector("span").textContent = "MCP server connected";
+    $("source").textContent = outlook.price_source;
+    renderChart();
+  } catch (e) {
+    $("status").querySelector("span").textContent = "MCP server not reachable";
+  }
+}
+
+function renderChart() {
+  const svg = $("chart"), pts = outlook ? outlook.next_24h : [];
+  if (!pts.length) return;
+  const W = svg.clientWidth || 600, H = 170, top = 32, bottom = 22, n = pts.length, bw = W / n;
+  const t0 = new Date(pts[0].start).getTime(), hour = 3600e3;
+  const x = (t) => ((new Date(t).getTime() - t0) / hour) * bw;
+  const prices = pts.map((p) => p.price), max = Math.max(...prices) * 1.08;
+  const sorted = [...prices].sort((a, b) => a - b);
+  const lo = sorted[Math.floor(n / 3)], hi = sorted[Math.floor((2 * n) / 3)];
+  const color = (p) => (p < lo ? "var(--cheap)" : p >= hi ? "var(--pricey)" : "var(--avg)");
+  let s = "";
+  bands.forEach((b, i) => {
+    const a = Math.max(0, x(b.start)), z = Math.min(W, x(b.end));
+    if (z <= 0 || a >= W) return;
+    s += `<rect x="${a}" y="0" width="${z - a}" height="${H - bottom}" rx="6" fill="var(--band)" stroke="var(--accent)" stroke-opacity=".5"/>`;
+    s += `<text x="${a + 6}" y="${12 + (i % 2) * 14}" fill="var(--accent)" font-size="11" font-weight="700">${b.label}</text>`;
+  });
+  pts.forEach((p, i) => {
+    const h = ((H - top - bottom) * p.price) / max;
+    s += `<rect x="${i * bw + 2}" y="${H - bottom - h}" width="${Math.max(bw - 4, 1)}" height="${h}" rx="3" fill="${color(p.price)}" opacity=".9"><title>${new Date(p.start).getHours()}:00 · ${(p.price * 100).toFixed(1)}</title></rect>`;
+    if (i % 3 === 0) s += `<text x="${i * bw + bw / 2}" y="${H - 6}" fill="var(--muted)" font-size="11" text-anchor="middle">${new Date(p.start).getHours()}h</text>`;
+  });
+  const nx = x(new Date().toISOString());
+  s += `<line x1="${nx}" x2="${nx}" y1="${top - 6}" y2="${H - bottom}" stroke="#fff" stroke-dasharray="3 3" opacity=".7"/>`;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = s;
+}
+window.addEventListener("resize", renderChart);
+
+function bandsFrom(trace) {
+  const out = [];
+  for (const c of trace) {
+    const o = c.output || {};
+    if (o.best_start) out.push({ label: o.appliance, start: o.best_start, end: o.best_end });
+    for (const r of o.runs || []) if (r.start) out.push({ label: r.appliance, start: r.start, end: r.end });
+  }
+  return out;
+}
+
+function addCall(c) {
+  const box = $("calls");
+  if (box.querySelector(".empty")) box.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "call";
+  const say = (c.output && (c.output.speech || c.output.text)) || "";
+  el.innerHTML = `<div class="name">→ ${c.tool}${c.error ? ' <span class="err">error</span>' : ""}</div>
+    <div class="args"></div><div class="say"></div>
+    <details><summary>structuredContent</summary><pre></pre></details>`;
+  el.querySelector(".args").textContent = JSON.stringify(c.input || {});
+  el.querySelector(".say").textContent = say;
+  el.querySelector("pre").textContent = JSON.stringify(c.output, null, 2);
+  box.prepend(el);
+}
+
+function speak(text) {
+  if (!$("voice").checked || !("speechSynthesis" in window)) return setState("idle");
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  const v = speechSynthesis.getVoices().find((v) => v.lang === "en-US" && /Samantha|Aria|Jenny|Google US English|Female/i.test(v.name));
+  if (v) u.voice = v;
+  u.onend = u.onerror = () => setState("idle");
+  setState("speaking");
+  speechSynthesis.speak(u);
+}
+
+async function send(text) {
+  text = text.trim();
+  if (!text) return;
+  $("heard").textContent = text;
+  $("reply").className = "reply dim";
+  $("reply").textContent = "…";
+  setState("thinking");
+  history.push({ role: "user", content: [{ text }] });
+  try {
+    const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: history }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+    history = data.messages;
+    data.trace.forEach(addCall);
+    const nb = bandsFrom(data.trace);
+    if (nb.length) { bands = nb; renderChart(); }
+    $("reply").className = "reply";
+    $("reply").textContent = data.reply;
+    speak(data.reply);
+  } catch (e) {
+    history.pop();
+    $("reply").className = "reply err";
+    $("reply").textContent = "Error: " + e.message;
+    setState("idle");
+  }
+}
+
+$("form").addEventListener("submit", (e) => { e.preventDefault(); send($("input").value); $("input").value = ""; });
+document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => send(c.textContent)));
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+$("mic").addEventListener("click", () => {
+  if (!SR) { $("input").focus(); $("input").placeholder = "Voice input needs Chrome — type instead"; return; }
+  speechSynthesis.cancel();
+  const rec = new SR();
+  rec.lang = "en-US";
+  rec.interimResults = true;
+  rec.onresult = (e) => {
+    const t = Array.from(e.results).map((r) => r[0].transcript).join("");
+    $("heard").textContent = t;
+    if (e.results[e.results.length - 1].isFinal) send(t);
+  };
+  rec.onend = () => { if (document.body.dataset.state === "listening") setState("idle"); };
+  setState("listening");
+  rec.start();
+});
+
+if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => {};
+loadOutlook();
+</script>
+</body>
+</html>
