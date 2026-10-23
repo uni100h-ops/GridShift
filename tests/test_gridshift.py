@@ -67,6 +67,25 @@ def test_plan_respects_power_limit_and_laundry_order():
         assert o.end <= ev.start or o.start >= ev.end
 
 
+def test_plan_evening_fits_laundry_and_car_before_morning():
+    # Regression: at 19:50 with a 07:00 deadline the car took the cheap night and the
+    # washer grabbed midnight, leaving the dryer no slot. The pair must still fit.
+    from gridshift.prices import Sample
+    sample = Sample(TZ)
+    now = datetime(2026, 10, 23, 19, 50, tzinfo=TZ)
+    hours = sample.day(now.date()) + sample.day(now.date() + timedelta(days=1))
+    start, end = resolve_window("", "07:00", now, hours)
+    tasks = [
+        Task("washing_machine", "washing machine", 90, 0.6, 2.0),
+        Task("tumble_dryer", "tumble dryer", 120, 1.2, 2.5),
+        Task("ev_charger", "EV charging", 300, 3.7, 3.7),
+    ]
+    result = {t.id: c for t, c in plan(hours, tasks, start, end, 4.6, 0.4)}
+    assert all(result.values()), result
+    assert result["washing_machine"].end <= result["tumble_dryer"].start <= result["washing_machine"].end + timedelta(hours=3)
+    assert max(c.end for c in result.values()) <= end
+
+
 def test_parse_time_and_window_rollover():
     now = datetime(2026, 10, 23, 13, 10, tzinfo=TZ)
     assert parse_time("7pm", now)[0].hour == 19

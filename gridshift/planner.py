@@ -117,34 +117,58 @@ class Task:
 
 def plan(hours, tasks: list[Task], earliest, latest_end, limit_kw: float, base_kw: float):
     """Greedy: biggest loads first, each at its cheapest start that keeps total draw under limit_kw.
-    The dryer starts after the washing machine finishes, within 3 hours (wet laundry shouldn't wait)."""
-    order = sorted(tasks, key=lambda t: -t.avg_kw * t.minutes)
-    ids = [t.id for t in order]
-    if "washing_machine" in ids and "tumble_dryer" in ids:
-        dryer = order.pop(ids.index("tumble_dryer"))
-        order.insert([t.id for t in order].index("washing_machine") + 1, dryer)
-
+    Washer and dryer are placed as a pair: the dryer starts after the washer ends, within 3 hours
+    (wet laundry shouldn't wait)."""
     load: dict[datetime, float] = defaultdict(float)
+
+    def slots(t, s):
+        return [s + STEP * i for i in range(-(-t.minutes // 15))]
+
+    def fits(t, s):
+        return all(base_kw + load[x] + t.peak_kw <= limit_kw + 1e-9 for x in slots(t, s))
+
+    def place(t, s, sign=1):
+        for x in slots(t, s):
+            load[x] += sign * t.peak_kw
+
+    def options(t, a, b):
+        out = [(c, s) for s in _starts(a, b, t.minutes) if (c := run_cost(hours, s, t.minutes, t.avg_kw)) is not None]
+        return sorted(out, key=lambda x: (round(x[0], 6), x[1]))
+
+    def best_fit(t, a, b):
+        return next(((c, s) for c, s in options(t, a, b) if fits(t, s)), None)
+
+    def choose(t, found):
+        if found:
+            place(t, found[1])
+        chosen[t.id] = Choice(found[1], found[1] + timedelta(minutes=t.minutes), found[0]) if found else None
+
+    by_id = {t.id: t for t in tasks}
+    washer, dryer = by_id.get("washing_machine"), by_id.get("tumble_dryer")
     chosen: dict[str, Choice | None] = {}
-    for t in order:
-        start_from, end_by = earliest, latest_end
-        if t.id == "tumble_dryer" and chosen.get("washing_machine"):
-            start_from = max(earliest, chosen["washing_machine"].end)
-            end_by = min(latest_end, start_from + timedelta(hours=3, minutes=t.minutes))
-        options = []
-        for s in _starts(start_from, end_by, t.minutes):
-            c = run_cost(hours, s, t.minutes, t.avg_kw)
-            if c is not None:
-                options.append((c, s))
-        chosen[t.id] = None
-        for c, s in sorted(options, key=lambda x: (round(x[0], 6), x[1])):
-            slots = [s + STEP * i for i in range(-(-t.minutes // 15))]
-            if all(base_kw + load[x] + t.peak_kw <= limit_kw + 1e-9 for x in slots):
-                for x in slots:
-                    load[x] += t.peak_kw
-                chosen[t.id] = Choice(s, s + timedelta(minutes=t.minutes), c)
-                break
-    return [(t, chosen[t.id]) for t in order]
+    for t in sorted(tasks, key=lambda t: -t.avg_kw * t.minutes):
+        if t.id in chosen:
+            continue
+        if washer and dryer and t in (washer, dryer):
+            best = None
+            for c1, s1 in options(washer, earliest, latest_end):
+                if not fits(washer, s1):
+                    continue
+                place(washer, s1)
+                e1 = s1 + timedelta(minutes=washer.minutes)
+                d = best_fit(dryer, e1, min(latest_end, e1 + timedelta(hours=3, minutes=dryer.minutes)))
+                place(washer, s1, -1)
+                if d and (best is None or c1 + d[0] < best[0] - 1e-9):
+                    best = (c1 + d[0], (c1, s1), d)
+            if best:
+                choose(washer, best[1])
+                choose(dryer, best[2])
+            else:
+                choose(washer, best_fit(washer, earliest, latest_end))
+                choose(dryer, None)
+            continue
+        choose(t, best_fit(t, earliest, latest_end))
+    return [(t, chosen[t.id]) for t in tasks]
 
 
 # ---------- price levels ----------
@@ -174,7 +198,7 @@ def say_money(x: float, currency: str) -> str:
     if x < 0.995:
         c = round(x * 100)
         return f"less than 1 {small[:-1] if small.endswith('s') else small}" if c < 1 else f"{c} {small}"
-    return f"{x:.2f} {big}"
+    return f"{round(x)} {big}" if x >= 10 else f"{x:.2f} {big}"
 
 
 def say_rate(p: float, currency: str) -> str:
@@ -183,6 +207,8 @@ def say_rate(p: float, currency: str) -> str:
 
 
 def say_clock(t: datetime) -> str:
+    if (t.hour, t.minute) in ((0, 0), (12, 0)):
+        return "midnight" if t.hour == 0 else "noon"
     h = t.hour % 12 or 12
     suffix = "AM" if t.hour < 12 else "PM"
     return f"{h} {suffix}" if t.minute == 0 else f"{h}:{t.minute:02d} {suffix}"
@@ -197,7 +223,7 @@ def say_span(a: datetime, b: datetime, now: datetime) -> str:
 
 def say_when(t: datetime, now: datetime) -> str:
     days = (t.date() - now.date()).days
-    if days == 0:
+    if days == 0 or (days == 1 and t.hour == 0 and t.minute == 0):  # tonight's midnight
         return f"at {say_clock(t)}"
     if days == 1:
         return f"tomorrow at {say_clock(t)}"
